@@ -1,0 +1,208 @@
+import pandas as pd
+import praw
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import nltk
+from nltk import pos_tag, word_tokenize ,punkt
+from nltk.corpus import stopwords
+import matplotlib.pyplot as plt
+
+# Download NLTK resources
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('stopwords')
+
+# Reddit API authentication
+reddit = praw.Reddit(
+    client_id='0LZy4HRpIw_FNR6R4o_HHg',
+    client_secret='7CpuACZjf_i54Hvya20oxERYicmDZQ',
+    user_agent='post_analysis/1.0 by Master_Cry_9674'
+)
+
+# Sentiment Analyzer
+analyzer = SentimentIntensityAnalyzer()
+
+# Function to perform sentiment analysis
+def analyze_sentiment(text):
+    sentiment_score = analyzer.polarity_scores(text)
+    compound_score = sentiment_score['compound']
+    
+    # Categorize sentiment based on the compound score
+    if compound_score >= 0.05:
+        return "Positive"
+    elif compound_score <= -0.05:
+        return "Negative"
+    else:
+        return "Neutral"
+
+# Function to perform syntax verification using POS tagging
+def syntax_verification(text):
+    tokens = word_tokenize(text)
+    pos_tags = pos_tag(tokens)
+    return pos_tags
+
+# Function to clean text data
+def clean_text(text):
+    tokens = word_tokenize(text.lower())
+    stop_words = set(stopwords.words('english'))
+    cleaned_tokens = [token for token in tokens if token.isalnum() and token not in stop_words]
+    return ' '.join(cleaned_tokens)
+
+# Function to get Reddit posts about a specific stock
+def get_reddit_posts(stock_name, limit=30):
+    subreddit = reddit.subreddit('all')  # Search in all subreddits
+    posts = subreddit.search(stock_name, sort='new', limit=limit)
+    
+    results = []
+    for post in posts:
+        results.append({
+            'company': stock_name,
+            'username': post.author.name if post.author else "Unknown",
+            'content': post.selftext,
+            'title': post.title,
+            'url': post.url,
+            'created_utc': post.created_utc
+        })
+    return results
+
+# Function to save data to Excel and display overall sentiment metrics
+def save_to_excel(data, stock_name):
+    # Load existing data or create a new DataFrame if the file does not exist
+    try:
+        knowledge_base = pd.read_excel("knowledge_base.xlsx")
+    except FileNotFoundError:
+        knowledge_base = pd.DataFrame(columns=['company', 'username', 'content', 'cleaned content', 'POS Tags', 'sentiment'])
+
+    sentiment_counts = {"Positive": 0, "Negative": 0, "Neutral": 0}
+
+    # Analyze sentiment, clean content, perform syntax verification, and append to the knowledge base
+    for post in data:
+        post['cleaned content'] = clean_text(post['content'])
+        sentiment = analyze_sentiment(post['cleaned content'])
+        pos_tags = syntax_verification(post['cleaned content'])
+        post['sentiment'] = sentiment
+        post['POS Tags'] = str(pos_tags)  # Convert the list of POS tags to a string for storage
+        
+        # Select only required columns
+        post_df = pd.DataFrame([{
+            'company': post['company'],
+            'username': post['username'],
+            'content': post['content'],
+            'cleaned content': post['cleaned content'],
+            'POS Tags': post['POS Tags'],
+            'sentiment': post['sentiment']
+        }])
+        
+        # Append to the knowledge base
+        knowledge_base = pd.concat([knowledge_base, post_df], ignore_index=True)
+        
+        # Update sentiment counts
+        sentiment_counts[sentiment] += 1
+
+    # Drop duplicates based on company, username, and content columns to avoid duplicate entries
+    knowledge_base.drop_duplicates(subset=['company', 'username', 'content'], keep='last', inplace=True)
+
+    # Save the updated knowledge base to Excel
+    knowledge_base.to_excel("knowledge_base.xlsx", index=False)
+    
+    # Display overall sentiment metrics
+    total_posts = sum(sentiment_counts.values())
+    print(f"\nOverall Sentiment Metrics for '{stock_name}':")
+    print(f"Positive: {sentiment_counts['Positive']} ({(sentiment_counts['Positive']/total_posts)*100:.2f}%)")
+    print(f"Negative: {sentiment_counts['Negative']} ({(sentiment_counts['Negative']/total_posts)*100:.2f}%)")
+    print(f"Neutral: {sentiment_counts['Neutral']} ({(sentiment_counts['Neutral']/total_posts)*100:.2f}%)")
+
+    # Visualize sentiment distribution
+    visualize_sentiment_distribution(sentiment_counts, stock_name)
+
+# Function to visualize sentiment distribution
+def visualize_sentiment_distribution(sentiment_counts, stock_name):
+    labels = sentiment_counts.keys()
+    values = sentiment_counts.values()
+    colors = ['green', 'red', 'blue']
+
+    plt.figure(figsize=(8, 6))
+    plt.bar(labels, values, color=colors)
+    plt.title(f"Sentiment Distribution for '{stock_name}'")
+    plt.xlabel('Sentiment')
+    plt.ylabel('Number of Posts')
+    plt.xticks(rotation=0)
+    plt.show()
+
+if __name__ == "__main__":
+    # Choose a stock to analyze
+    company_choices = ['Tesla', 'Apple', 'Amazon', 'Microsoft', 'Google']
+    print("Choose a company to analyze:")
+    for i, company in enumerate(company_choices, start=1):
+        print(f"{i}. {company}")
+
+    choice = int(input("Enter the number of the company: ")) - 1
+    stock_name = company_choices[choice]
+
+    # Get posts and save them
+    print(f"\nRetrieving Reddit posts for {stock_name}...")
+    reddit_posts = get_reddit_posts(stock_name)
+    save_to_excel(reddit_posts, stock_name)
+    
+    print("\nData has been saved to knowledge_base.xlsx.")  now in this code lets add the prediction part here is the reference code import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+
+# Load dataset
+df = pd.read_csv('Data.csv', encoding="ISO-8859-1")
+print(df.head())
+
+# Splitting the dataset into train and test
+train = df[df['Date'] < '20150101']
+test = df[df['Date'] > '20141231']
+
+# Removing punctuations and renaming columns
+data = train.iloc[:, 2:27]
+data.replace("[^a-zA-Z]", " ", regex=True, inplace=True)
+
+# Renaming columns for ease of access
+list1 = [i for i in range(25)]
+new_Index = [str(i) for i in list1]
+data.columns = new_Index
+print(data.head())
+
+# Converting headlines to lowercase
+for index in new_Index:
+    data[index] = data[index].str.lower()
+
+print(data.head(1))
+
+# Joining all the headlines into a single string
+headlines = []
+for row in range(0, len(data.index)):
+    headlines.append(' '.join(str(x) for x in data.iloc[row, 0:25]))
+
+print(headlines[0])
+
+# Implementing Bag of Words with bigrams
+countvector = CountVectorizer(ngram_range=(2, 2))
+traindataset = countvector.fit_transform(headlines)
+
+# Implementing RandomForest Classifier
+randomclassifier = RandomForestClassifier(n_estimators=200, criterion='entropy')
+randomclassifier.fit(traindataset, train['Label'])
+
+# Preparing the test data
+test_transform = []
+for row in range(0, len(test.index)):
+    test_transform.append(' '.join(str(x) for x in test.iloc[row, 2:27]))
+
+test_dataset = countvector.transform(test_transform)
+
+# Making predictions on the test dataset
+predictions = randomclassifier.predict(test_dataset)
+
+# Evaluating the model
+matrix = confusion_matrix(test['Label'], predictions)
+print("Confusion Matrix:\n", matrix)
+
+score = accuracy_score(test['Label'], predictions)
+print("Accuracy Score:", score)
+
+report = classification_report(test['Label'], predictions)
+print("Classification Report:\n", report) as this code use dataset.csv code to train and use the retrived posts that you use to predict the scentiment use that as input and predict wheather the stock of that company will go up or down and print it the dataset explanation it consist of top 25 news and lable is the target variable 0 means the stock goes down 1 means the stock goes up 
